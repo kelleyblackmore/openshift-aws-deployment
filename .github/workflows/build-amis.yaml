@@ -1,0 +1,65 @@
+name: Build Custom AMIs
+
+on:
+  workflow_dispatch:
+    inputs:
+      ami_name:
+        description: "Base name for AMI"
+        required: true
+        default: "ocp-custom-ami"
+      aws_region:
+        description: "AWS region to build AMI in"
+        required: true
+        default: "us-east-1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ github.event.inputs.aws_region }}
+      AMI_NAME: ${{ github.event.inputs.ami_name }}
+      PACKER_TEMPLATE: packer/aws-ami.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Packer
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y unzip jq curl
+          PKG="packer_1.9.0_linux_amd64.zip"
+          curl -sSLO "https://releases.hashicorp.com/packer/1.9.0/${PKG}"
+          unzip -o ${PKG} -d /usr/local/bin
+          rm -f ${PKG}
+          packer version
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate packer template exists
+        run: |
+          if [ ! -f "${{ env.PACKER_TEMPLATE }}" ]; then
+            echo "packer template not found at ${PACKER_TEMPLATE}"
+            ls -la packer || true
+            exit 1
+          fi
+
+      - name: Build AMI(s) with Packer
+        id: packer
+        run: |
+          PACKER_LOG=1 packer build -machine-readable -var "ami_name=${AMI_NAME}" "${PACKER_TEMPLATE}" | tee packer-output.txt
+          AMI_IDS=$(grep -oE 'ami-[0-9a-fA-F]+' packer-output.txt | tr '\n' ',' | sed 's/,$//')
+          echo "${AMI_IDS}" > ami-ids.txt || true
+          echo "AMI_IDS=${AMI_IDS}"
+          echo "::set-output name=ami_ids::${AMI_IDS}"
+
+      - name: Upload AMI IDs artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ami-ids
+          path: ami-ids.txt
+          retention-days: 7

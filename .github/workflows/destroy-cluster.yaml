@@ -1,0 +1,43 @@
+name: Destroy OpenShift Cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster_dir:
+        description: 'Path to cluster directory (artifact or workspace path)'
+        required: true
+        default: 'cluster-output'
+      aws_region:
+        description: 'AWS region'
+        required: true
+        default: 'us-east-1'
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ github.event.inputs.aws_region }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download openshift-install
+        run: |
+          chmod +x ./openshift/install-scripts/download-installer.sh
+          ./openshift/install-scripts/download-installer.sh
+
+      - name: Destroy cluster
+        run: |
+          CLUSTER_DIR="${{ github.event.inputs.cluster_dir }}"
+          if [ ! -d "$CLUSTER_DIR" ]; then
+            echo "Cluster directory $CLUSTER_DIR not found in workspace. Please upload or point to a valid dir."
+            exit 1
+          fi
+          ./openshift-install destroy cluster --dir="$CLUSTER_DIR" || true

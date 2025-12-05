@@ -1,0 +1,31 @@
+# Ignore installer output and binaries
+cluster-output/
+openshift-install
+*.tar.gz
+ami-artifact/
+ami-ids.txt
+packer-out.txt
+secrets/
+.DS_Store
+*.swp
+
+# Backup and state files that may contain secrets
+*.backup
+*.log
+.openshift_install*
+install-config.yaml
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# AWS credentials
+credentials
+config
