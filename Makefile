@@ -1,4 +1,4 @@
-.PHONY: help setup check-env download-installer validate-config dry-run show-manifests create-cluster destroy-cluster clean check-credentials check-secrets test-download
+.PHONY: help setup check-env download-installer validate-config dry-run show-manifests create-cluster destroy-cluster teardown teardown-force clean check-credentials check-secrets test-download
 
 # Default target
 .DEFAULT_GOAL := help
@@ -55,9 +55,18 @@ help: ## Show this help message
 setup: check-env download-installer ## Complete setup: check dependencies and download installer
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 	@echo "$(BLUE)Next steps:$(NC)"
-	@echo "  1. Set required secrets: OPENSHIFT_PULL_SECRET, SSH_PUBLIC_KEY"
-	@echo "  2. Run: make validate-config"
-	@echo "  3. Run: make create-cluster"
+	@echo "  1. Run: make setup-ssh-key (generates and uploads SSH key to AWS)"
+	@echo "  2. Set required secret: OPENSHIFT_PULL_SECRET"
+	@echo "  3. Run: make validate-config"
+	@echo "  4. Run: make create-cluster"
+
+setup-test: check-env check-credentials setup-ssh-key download-installer ## Quick setup for testing (auto-generates SSH key)
+	@echo "$(GREEN)✓ Test setup complete!$(NC)"
+	@echo "$(BLUE)Next steps:$(NC)"
+	@echo "  1. Export SSH key: export SSH_PUBLIC_KEY=\$$(cat ~/.ssh/openshift-cluster.pub)"
+	@echo "  2. Set OPENSHIFT_PULL_SECRET from https://console.redhat.com/openshift/install/pull-secret"
+	@echo "  3. Run: make validate-config CLUSTER_NAME=test-cluster BASE_DOMAIN=example.com"
+	@echo "  4. Run: make create-cluster"
 
 check-env: ## Check if required tools are installed
 	@echo "$(BLUE)Checking required dependencies...$(NC)"
@@ -92,6 +101,12 @@ check-secrets: ## Verify required secrets are set
 	@echo "$(GREEN)✓ OPENSHIFT_PULL_SECRET$(NC)"
 	@test -n "$$SSH_PUBLIC_KEY" || { echo "$(RED)✗ SSH_PUBLIC_KEY is not set$(NC)"; exit 1; }
 	@echo "$(GREEN)✓ SSH_PUBLIC_KEY$(NC)"
+
+setup-ssh-key: check-credentials ## Generate SSH key and upload to AWS
+	@echo "$(BLUE)Setting up SSH key...$(NC)"
+	@CLUSTER_NAME=$(CLUSTER_NAME) AWS_REGION=$(AWS_REGION) AWS_ACCESS_KEY_ID=$${AWS_ACCESS_KEY_ID:-$$AWS_ACCESS_KEY} bash ./scripts/setup-ssh-key.sh
+	@echo "$(GREEN)✓ SSH key setup complete$(NC)"
+	@echo "$(YELLOW)⚠ Run this to export the key: export SSH_PUBLIC_KEY=\$$(cat ~/.ssh/openshift-cluster.pub)$(NC)"
 
 download-installer: ## Download the OpenShift installer binary
 	@echo "$(BLUE)Downloading OpenShift installer (version: $(OPENSHIFT_VERSION))...$(NC)"
@@ -245,6 +260,12 @@ destroy-cluster: ## Destroy the OpenShift cluster
 	./openshift-install destroy cluster --dir=./cluster-output --log-level=info
 	@echo "$(GREEN)✓ Cluster destroyed$(NC)"
 
+teardown: ## Complete teardown (cluster + AWS resources + local artifacts)
+	@CLUSTER_NAME=$(CLUSTER_NAME) AWS_REGION=$(AWS_REGION) AWS_ACCESS_KEY_ID=$${AWS_ACCESS_KEY_ID:-$$AWS_ACCESS_KEY} bash ./scripts/teardown.sh
+
+teardown-force: ## Complete teardown without confirmation prompts
+	@CLUSTER_NAME=$(CLUSTER_NAME) AWS_REGION=$(AWS_REGION) AWS_ACCESS_KEY_ID=$${AWS_ACCESS_KEY_ID:-$$AWS_ACCESS_KEY} SKIP_CONFIRMATION=true bash ./scripts/teardown.sh
+
 backup-config: ## Backup cluster configuration and credentials
 	@test -d ./cluster-output || { echo "$(RED)✗ cluster-output directory not found$(NC)"; exit 1; }
 	@BACKUP_DIR="./backups/$(CLUSTER_NAME)-$$(date +%Y%m%d-%H%M%S)" && \
@@ -364,6 +385,9 @@ audit-secrets: ## Check for potential secret leaks in tracked files
 	else \
 		echo "$(RED)✗ Not a git repository$(NC)"; \
 	fi
+
+quick-test: ## Quick test setup (automated SSH key + config generation)
+	@bash ./scripts/quick-test-setup.sh
 
 quick-start: setup validate-config estimate-cost ## Quick start guide
 	@echo ""

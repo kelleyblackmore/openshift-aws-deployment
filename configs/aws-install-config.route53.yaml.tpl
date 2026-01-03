@@ -5,8 +5,7 @@ metadata:
 platform:
   aws:
     region: ${AWS_REGION}
-    hostedZoneID: ${HOSTED_ZONE_ID}
-    hostedZoneName: ${HOSTED_ZONE_NAME}
+    hostedZone: ${HOSTED_ZONE_ID}
 controlPlane:
   hyperthreading: Enabled
   name: master
